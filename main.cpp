@@ -62,38 +62,51 @@ int levenshtein(const string& a, const string& b) {
 vector<string> tokenize(const string& query) {
     vector<string> tokens;
     string token;
+
     for (size_t i = 0; i < query.size(); i++) {
         char c = query[i];
+
         if (isspace(c)) {
             if (!token.empty()) {
                 tokens.push_back(token);
                 token.clear();
             }
-        } else if (c == '(' || c == ')') {
+        }
+        else if (c == '(' || c == ')') {
             if (!token.empty()) {
                 tokens.push_back(token);
                 token.clear();
             }
             tokens.push_back(string(1, c));
-        } else if (c == '&' || c == '|') {
+        }
+        else if (c == '&' && i+1 < query.size() && query[i+1] == '&') {
             if (!token.empty()) {
                 tokens.push_back(token);
                 token.clear();
             }
-            if (i+1 < query.size() && query[i+1] == c) {
-                tokens.push_back(string(2, c)); // && or ||
-                i++;
+            tokens.push_back("&&");
+            i++; // skip second &
+        }
+        else if (c == '|' && i+1 < query.size() && query[i+1] == '|') {
+            if (!token.empty()) {
+                tokens.push_back(token);
+                token.clear();
             }
-        } else if (c == '!') {
+            tokens.push_back("||");
+            i++; // skip second |
+        }
+        else if (c == '!') {
             if (!token.empty()) {
                 tokens.push_back(token);
                 token.clear();
             }
             tokens.push_back("!");
-        } else {
+        }
+        else {
             token.push_back(c);
         }
     }
+
     if (!token.empty()) tokens.push_back(token);
     return tokens;
 }
@@ -465,13 +478,16 @@ void replLoop(json& bible) {
 
         if (line == "help") {
             cout << "Commands:\n"
-                 << "  Book Chapter Verse       → Show verse\n"
-                 << "  Book Chapter Verse-Range → Show range\n"
-                 << "  Book Chapter             → Show chapter\n"
-                 << "  search <keyword>         → Search globally\n"
-                 << "  <Book> search <keyword>  → Search within a book\n"
-                 << "  list                     → List all books\n"
-                 << "  quit / exit              → Quit REPL\n";
+            << "  Book Chapter Verse       → Show verse\n"
+            << "  Book Chapter Verse-Range → Show range\n"
+            << "  Book Chapter             → Show chapter\n"
+            << "  search <keyword>         → Search globally\n"
+            << "  <Book> search <keyword>  → Search within a book\n"
+            << "  search faith && hope     → Operator search (AND)\n"
+            << "  search faith || love     → Operator search (OR)\n"
+            << "  search !(sin)            → Operator search (NOT)\n"
+            << "  list                     → List all books\n"
+            << "  quit / exit              → Quit REPL\n";
             continue;
         }
 
@@ -486,11 +502,23 @@ void replLoop(json& bible) {
                     for (auto& ch : b["chapters"]) {
                         for (auto& v : ch["verses"]) {
                             if (evalPostfix(postfix, v["text"])) {
+                            if (evalPostfix(postfix, v["text"])) {
+                                string highlighted = v["text"];
+                                for (auto& tok : toks) {
+                                    if (tok == "&&" || tok == "||" || tok == "!" || tok == "(" || tok == ")") continue;
+                                    size_t pos = 0;
+                                    while ((pos = toLower(highlighted).find(toLower(tok), pos)) != string::npos) {
+                                        highlighted.replace(pos, tok.length(),
+                                        "\033[1;31m" + highlighted.substr(pos, tok.length()) + "\033[0m");
+                                        pos += tok.length() + 9; // move past highlight
+                                    }
+                                }
                                 cout << b["book"] << " "
                                      << ch["chapter"] << ":"
                                      << v["verse"] << " → "
-                                     << v["text"] << "\n";
-                                anyFound = true;
+                                     << highlighted << "\n";
+                                     anyFound = true;
+                                }
                             }
                         }
                     }
