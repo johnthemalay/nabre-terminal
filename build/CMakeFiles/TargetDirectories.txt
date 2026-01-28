@@ -1,0 +1,7 @@
+/home/johnthemalay/Github/Nabre Terminal/build/CMakeFiles/Nabreterm.dir
+/home/johnthemalay/Github/Nabre Terminal/build/CMakeFiles/edit_cache.dir
+/home/johnthemalay/Github/Nabre Terminal/build/CMakeFiles/rebuild_cache.dir
+/home/johnthemalay/Github/Nabre Terminal/build/CMakeFiles/list_install_components.dir
+/home/johnthemalay/Github/Nabre Terminal/build/CMakeFiles/install.dir
+/home/johnthemalay/Github/Nabre Terminal/build/CMakeFiles/install/local.dir
+/home/johnthemalay/Github/Nabre Terminal/build/CMakeFiles/install/strip.dir
