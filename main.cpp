@@ -387,8 +387,8 @@ void runSearchInBook(json& bible, const string& book, const string& keywordArg) 
                     }
 
                     if (match) {
-                        cout << bestBook << " " << chapter << ":" << v["verse"]
-                             << " → " << text << "\n";
+                        cout << "\033[1;34m" << bestBook << " " << "\033[32m" << chapter << ":" << v["verse"]
+                        << "\033[0m" << " → " << text << "\n";
                         found = true;
                     }
                 }
@@ -513,10 +513,9 @@ void replLoop(json& bible) {
                                         pos += tok.length() + 9; // move past highlight
                                     }
                                 }
-                                cout << b["book"] << " "
-                                     << ch["chapter"] << ":"
-                                     << v["verse"] << " → "
-                                     << highlighted << "\n";
+
+                                cout << "\033[1;34m" << b["book"] << " " << "\033[32m" << ch["chapter"] << ":"
+                                     << v["verse"] << "\033[0m" << " → " << highlighted << "\n";
                                      anyFound = true;
                                 }
                             }
@@ -530,10 +529,21 @@ void replLoop(json& bible) {
             continue;
         }
 
+        // Book-specific search (must come before chapter/verse parsing)
+        else if (tokens.size() >= 3 && tokens[1] == "search") {
+            // join everything after "search" into one keyword string
+            string keywordArg;
+            for (size_t i = 2; i < tokens.size(); i++) {
+                if (i > 2) keywordArg += " ";
+                keywordArg += tokens[i];
+            }
+            runSearchInBook(bible, tokens[0], keywordArg);
+        }
+
         // Book + Chapter
         else if (tokens.size() == 2) {
             int chapter = safeStoi(tokens[1]);
-            if (chapter == -1) continue; // invalid input
+            if (chapter == -1) continue;
             runChapter(bible, tokens[0], chapter);
         }
 
@@ -541,14 +551,9 @@ void replLoop(json& bible) {
         else if (tokens.size() == 3) {
             string book = tokens[0];
             int chapter = safeStoi(tokens[1]);
-            if (chapter == -1) continue; // invalid input
+            if (chapter == -1) continue;
             string verseArg = tokens[2];
             runRange(bible, book, chapter, verseArg);
-        }
-
-        // Book-specific search
-        else if (tokens.size() >= 3 && tokens[1] == "search") {
-            runSearchInBook(bible, tokens[0], tokens[2]);
         }
 
         else {
