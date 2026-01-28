@@ -1,3 +1,7 @@
+#ifndef NABRETERM_DATADIR
+#define NABRETERM_DATADIR "."
+#endif
+
 #include <iostream>
 #include <fstream>
 #include <nlohmann/json.hpp>
@@ -13,9 +17,6 @@
 
 using namespace std;
 using json = nlohmann::json;
-//string histFile = string(getenv("HOME")) + "/.nabreterm_history";
-//read_history(histFile.c_str()); // if file doesn’t exist, it’s fine
-//write_history(histFile.c_str()); // creates file if missing
 
 // Utility: lowercase conversion
 string toLower(const string& s) {
@@ -324,6 +325,7 @@ void replLoop(json& bible) {
     read_history(histFile.c_str());
 
     while (true) {
+
     char* input = readline("\033[1;37mNabreterm> \033[0m");
     if (!input) break; // Ctrl+D
     string line(input);
@@ -389,9 +391,13 @@ int main(int argc, char* argv[]) {
 
     ifstream file("nabre.json");
     if (!file.is_open()) {
-        cerr << "Could not open NABRE JSON file.\n";
-        return 1;
+    file.open(std::string(NABRETERM_DATADIR) + "/nabre.json");
     }
+    if (!file.is_open()) {
+    std::cerr << "Could not open NABRE JSON file.\n";
+    return 1;
+    }
+
     json bible;
     file >> bible;
 

@@ -14,5 +14,8 @@ foreach(json_file ${JSON_FILES})
     configure_file(${json_file} ${json_file} COPYONLY)
 endforeach()
 
+# Define install data directory for runtime
+add_definitions(-DNABRETERM_DATADIR="${CMAKE_INSTALL_PREFIX}/share/nabreterm")
+
 install(TARGETS nabreterm DESTINATION bin)
 install(FILES ${JSON_FILES} DESTINATION share/nabreterm)
