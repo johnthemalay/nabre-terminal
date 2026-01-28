@@ -30,3 +30,36 @@
 *.exe
 *.out
 *.app
+
+# Build directories
+/build/
+/CMakeFiles/
+/CMakeCache.txt
+/cmake_install.cmake
+/Makefile
+
+# Executables and binaries
+Nabreterm
+*.exe
+*.out
+*.o
+*.obj
+
+# Debug and log files
+*.log
+*.dbg
+*.stackdump
+
+# History files
+.nabreterm_history
+
+# IDE / editor files
+.vscode/
+.idea/
+*.swp
+*~
+.DS_Store
+
+# Generated JSON copies in build dir
+/build/*.json
+
