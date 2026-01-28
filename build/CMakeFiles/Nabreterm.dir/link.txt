@@ -1,1 +1,0 @@
-/usr/bin/c++ -Wl,--dependency-file=CMakeFiles/Nabreterm.dir/link.d CMakeFiles/Nabreterm.dir/main.cpp.o -o Nabreterm  -lreadline -lhistory

@@ -1,3 +1,0 @@
-/usr/local/bin/Nabreterm
-/usr/local/share/nabreterm/nabre.json
-/usr/local/share/nabreterm/books.json
