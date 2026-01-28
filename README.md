@@ -1,11 +1,8 @@
-Here’s a **full documentation draft** you can include in your repo as `README.md` (or a separate `DOCUMENTATION.md`). It covers everything from **CMake build** to **install** and **uninstall**, in a professional open‑source style:
-
----
 
 # Nabreterm
 
 Nabreterm is a lightweight terminal application for exploring the NABRE Bible in JSON format.  
-It supports both **CLI mode** (one‑shot commands) and **REPL mode** (interactive session).
+It supports both **CLI mode** (one‑shot commands) and **REPL mode** (interactive session). It's actually my personal project for personal use
 
 ---
 
@@ -15,6 +12,10 @@ It supports both **CLI mode** (one‑shot commands) and **REPL mode** (interacti
 - GNU GCC / G++ (tested with GCC 11+)
 - GNU Readline library (`libreadline-dev` on Debian/Ubuntu)
 - [nlohmann/json](https://github.com/nlohmann/json) (header‑only library)
+
+### Install dependencies (Debian/Ubuntu) 
+```bash
+sudo apt update sudo apt install g++ make libreadline-dev
 
 ### Steps
 ```bash
