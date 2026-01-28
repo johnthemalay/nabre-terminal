@@ -4,6 +4,18 @@
 Nabreterm is a lightweight terminal application for exploring the NABRE Bible in JSON format.  
 It supports both **CLI mode** (one‑shot commands) and **REPL mode** (interactive session). It's actually my personal project for personal use
 
+Regarding the NABRE Terminal Tool:
+
+I’m a huge fan of the NABRE translation, but the frustration of not having it available via Diatheke in my terminal was the mother of invention. I built this software specifically to bridge that gap for my own workflow.
+
+However, let’s be extremely clear about the legal boundaries:
+
+Respect the Source: I fully support and encourage everyone to buy a physical copy or an official digital license of the NABRE to support the publishers.
+
+Non-Profit & Personal Use only: This project is a labor of love, strictly non-profit, and intended for private, personal use.
+
+Zero Liability: I am providing the tool, not the content. If you choose to use this software for any commercial purpose or in a way that violates copyright law, that is entirely on you. * The "Anti-Lawsuit" Clause: I have zero desire to spend my life in a courtroom. I am not responsible for any legal actions, lawsuits, or copyright claims resulting from your misuse of this software. Use it at your own risk and respect the CCD’s intellectual property.
+
 ---
 
 ## 🚀 Build with CMake
