@@ -1,3 +1,7 @@
+/*Scripture texts, prefaces, introductions, footnotes and cross references used in this
+work are taken from the New American Bible, revised edition © 2010, 1991, 1986, 1970
+Confraternity of Christian Doctrine, Inc., Washington, DC All Rights Reserved.*/
+
 #ifndef NABRETERM_DATADIR
 #define NABRETERM_DATADIR "."
 #endif
