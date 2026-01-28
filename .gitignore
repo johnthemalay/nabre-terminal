@@ -60,6 +60,7 @@ Nabreterm
 *.swp
 *~
 .DS_Store
+*.cbp
 
 # Generated JSON copies in build dir
 /build/*.json
