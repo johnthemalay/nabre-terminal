@@ -415,24 +415,23 @@ void runListBooksColumn(const string& filename) {
 // Evaluate postfix expression on verse text
 bool evalPostfix(const vector<string>& postfix, const string& text) {
     stack<bool> st;
+    string lowerText = toLower(text);
+
     for (auto& token : postfix) {
-        if (token == "&&") {
+        if (token == "&&" || token == "||") {
+            if (st.size() < 2) return false; // malformed
             bool b = st.top(); st.pop();
             bool a = st.top(); st.pop();
-            st.push(a && b);
-        } else if (token == "||") {
-            bool b = st.top(); st.pop();
-            bool a = st.top(); st.pop();
-            st.push(a || b);
+            st.push(token == "&&" ? (a && b) : (a || b));
         } else if (token == "!") {
+            if (st.empty()) return false; // malformed
             bool a = st.top(); st.pop();
             st.push(!a);
         } else {
-            // keyword check
-            st.push(toLower(text).find(toLower(token)) != string::npos);
+            st.push(lowerText.find(toLower(token)) != string::npos);
         }
     }
-    return st.top();
+    return !st.empty() && st.top();
 }
 
 
