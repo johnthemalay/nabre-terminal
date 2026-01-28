@@ -30,6 +30,16 @@ string toLower(const string& s) {
     return result;
 }
 
+// --- Safe stoi wrapper ---
+int safeStoi(const string& s) {
+    try {
+        return stoi(s);
+    } catch (...) {
+        cerr << "Invalid number: " << s << "\n";
+        return -1; // sentinel value
+    }
+}
+
 int levenshtein(const string& a, const string& b) {
     int n = a.size(), m = b.size();
     vector<vector<int>> dp(n+1, vector<int>(m+1));
@@ -47,6 +57,85 @@ int levenshtein(const string& a, const string& b) {
     }
     return dp[n][m];
 }
+
+// --- Tokenizer: split into words, operators, parentheses ---
+vector<string> tokenize(const string& query) {
+    vector<string> tokens;
+    string token;
+    for (size_t i = 0; i < query.size(); i++) {
+        char c = query[i];
+        if (isspace(c)) {
+            if (!token.empty()) {
+                tokens.push_back(token);
+                token.clear();
+            }
+        } else if (c == '(' || c == ')') {
+            if (!token.empty()) {
+                tokens.push_back(token);
+                token.clear();
+            }
+            tokens.push_back(string(1, c));
+        } else if (c == '&' || c == '|') {
+            if (!token.empty()) {
+                tokens.push_back(token);
+                token.clear();
+            }
+            if (i+1 < query.size() && query[i+1] == c) {
+                tokens.push_back(string(2, c)); // && or ||
+                i++;
+            }
+        } else if (c == '!') {
+            if (!token.empty()) {
+                tokens.push_back(token);
+                token.clear();
+            }
+            tokens.push_back("!");
+        } else {
+            token.push_back(c);
+        }
+    }
+    if (!token.empty()) tokens.push_back(token);
+    return tokens;
+}
+
+// --- Operator precedence helper ---
+int precedence(const string& op) {
+    if (op == "&&") return 2;
+    if (op == "||") return 1;
+    if (op == "!")  return 3;
+    return 0;
+}
+
+// --- Shunting-yard: infix → postfix ---
+vector<string> toPostfix(const vector<string>& tokens) {
+    vector<string> output;
+    stack<string> ops;
+    for (auto& tok : tokens) {
+        if (tok == "&&" || tok == "||" || tok == "!") {
+            while (!ops.empty() && precedence(ops.top()) >= precedence(tok)) {
+                output.push_back(ops.top());
+                ops.pop();
+            }
+            ops.push(tok);
+        } else if (tok == "(") {
+            ops.push(tok);
+        } else if (tok == ")") {
+            while (!ops.empty() && ops.top() != "(") {
+                output.push_back(ops.top());
+                ops.pop();
+            }
+            if (!ops.empty()) ops.pop(); // discard "("
+        } else {
+            output.push_back(tok); // keyword
+        }
+    }
+    while (!ops.empty()) {
+        output.push_back(ops.top());
+        ops.pop();
+    }
+    return output;
+}
+
 
 // Simple argument parser for flags (--book, --chapter, etc.)
 map<string,string> parseArgs(int argc, char* argv[]) {
@@ -176,7 +265,6 @@ void runChapter(json& bible, const string& book, int chapter) {
     if (!found) cerr << "Chapter not found.\n";
 }
 
-
 void runRange(json& bible, const string& book, int chapter, const string& verseArg) {
     // Step 1: find closest book
     string bestBook;
@@ -207,10 +295,14 @@ void runRange(json& bible, const string& book, int chapter, const string& verseA
         string start, end;
         getline(ss, start, '-');
         getline(ss, end, '-');
-        startVerse = stoi(start);
-        endVerse = stoi(end);
+        startVerse = safeStoi(start);
+        endVerse   = safeStoi(end);
+    if (startVerse == -1 || endVerse == -1) return; // invalid input
+
     } else {
-        startVerse = endVerse = stoi(verseArg);
+        startVerse = endVerse = safeStoi(verseArg);
+        if (startVerse == -1) return; // invalid input
+
     }
 
     // Step 5: search only inside bestBook
@@ -235,8 +327,6 @@ void runRange(json& bible, const string& book, int chapter, const string& verseA
 
     if (!found) cerr << "Verse(s) not found.\n";
 }
-
-
 
 // --- Book-specific search helper ---
 void runSearchInBook(json& bible, const string& book, const string& keywordArg) {
@@ -322,6 +412,30 @@ void runListBooksColumn(const string& filename) {
     if (count % cols != 0) cout << "\n"; // final newline
 }
 
+// Evaluate postfix expression on verse text
+bool evalPostfix(const vector<string>& postfix, const string& text) {
+    stack<bool> st;
+    for (auto& token : postfix) {
+        if (token == "&&") {
+            bool b = st.top(); st.pop();
+            bool a = st.top(); st.pop();
+            st.push(a && b);
+        } else if (token == "||") {
+            bool b = st.top(); st.pop();
+            bool a = st.top(); st.pop();
+            st.push(a || b);
+        } else if (token == "!") {
+            bool a = st.top(); st.pop();
+            st.push(!a);
+        } else {
+            // keyword check
+            st.push(toLower(text).find(toLower(token)) != string::npos);
+        }
+    }
+    return st.top();
+}
+
+
 void replLoop(json& bible) {
     string histFile = string(getenv("HOME")) + "/.nabreterm_history";
 
@@ -329,61 +443,91 @@ void replLoop(json& bible) {
     read_history(histFile.c_str());
 
     while (true) {
+        char* input = readline("\033[1;37mNabreterm> \033[0m");
+        if (!input) break; // Ctrl+D
+        string line(input);
+        free(input);
 
-    char* input = readline("\033[1;37mNabreterm> \033[0m");
-    if (!input) break; // Ctrl+D
-    string line(input);
-    free(input);
+        if (line.empty()) continue;
+        add_history(line.c_str());
 
-    if (line.empty()) continue;
-    add_history(line.c_str());
+        if (line == "quit" || line == "exit") break;
+        if (line == "list") {
+            runListBooksColumn("books.json");
+            continue;
+        }
 
-    if (line == "quit" || line == "exit") break;
-    if (line == "list") {
-        runListBooksColumn("books.json");
-        continue;
+        // Tokenize input here
+        istringstream iss(line);
+        vector<string> tokens;
+        for (string w; iss >> w;) tokens.push_back(w);
+
+        if (tokens.empty()) continue;
+
+        if (line == "help") {
+            cout << "Commands:\n"
+                 << "  Book Chapter Verse       → Show verse\n"
+                 << "  Book Chapter Verse-Range → Show range\n"
+                 << "  Book Chapter             → Show chapter\n"
+                 << "  search <keyword>         → Search globally\n"
+                 << "  <Book> search <keyword>  → Search within a book\n"
+                 << "  list                     → List all books\n"
+                 << "  quit / exit              → Quit REPL\n";
+            continue;
+        }
+
+        // Search branch
+        if (tokens[0] == "search" && tokens.size() >= 2) {
+            string query = line.substr(7); // everything after "search "
+            try {
+                vector<string> toks = tokenize(query);
+                vector<string> postfix = toPostfix(toks);
+                bool anyFound = false;
+                for (auto& b : bible) {
+                    for (auto& ch : b["chapters"]) {
+                        for (auto& v : ch["verses"]) {
+                            if (evalPostfix(postfix, v["text"])) {
+                                cout << b["book"] << " "
+                                     << ch["chapter"] << ":"
+                                     << v["verse"] << " → "
+                                     << v["text"] << "\n";
+                                anyFound = true;
+                            }
+                        }
+                    }
+                }
+                if (!anyFound) cout << "No matches found.\n";
+            } catch (...) {
+                runSearch(bible, query); // fallback
+            }
+            continue;
+        }
+
+        // Book + Chapter
+        else if (tokens.size() == 2) {
+            int chapter = safeStoi(tokens[1]);
+            if (chapter == -1) continue; // invalid input
+            runChapter(bible, tokens[0], chapter);
+        }
+
+        // Book + Chapter + Verse or Range
+        else if (tokens.size() == 3) {
+            string book = tokens[0];
+            int chapter = safeStoi(tokens[1]);
+            if (chapter == -1) continue; // invalid input
+            string verseArg = tokens[2];
+            runRange(bible, book, chapter, verseArg);
+        }
+
+        // Book-specific search
+        else if (tokens.size() >= 3 && tokens[1] == "search") {
+            runSearchInBook(bible, tokens[0], tokens[2]);
+        }
+
+        else {
+            cout << "Unknown command. Try again.\n";
+        }
     }
-
-    // Tokenize input here
-    istringstream iss(line);
-    vector<string> tokens;
-    for (string w; iss >> w;) tokens.push_back(w);
-
-    if (tokens.empty()) continue;
-
-    if (line == "help") {
-    cout << "Commands:\n"
-         << "  Book Chapter Verse     → Show verse\n"
-         << "  Book Chapter Verse-Range → Show range\n"
-         << "  Book Chapter           → Show chapter\n"
-         << "  search <keyword>       → Search globally\n"
-         << "  <Book> search <keyword> → Search within a book\n"
-         << "  list                   → List all books\n"
-         << "  quit / exit            → Quit REPL\n";
-    continue;
-    }
-
-    // Now you can safely use tokens
-    if (tokens[0] == "search" && tokens.size() >= 2) {
-        runSearch(bible, tokens[1]);
-    } else if (tokens.size() == 2) {
-        runChapter(bible, tokens[0], stoi(tokens[1]));
-    } else if (tokens.size() == 3) {
-        string book = tokens[0];
-        int chapter = stoi(tokens[1]);
-        string verseArg = tokens[2];
-
-        // Debug check
-        //cout << "DEBUG: book=" << book << " chapter=" << chapter << " verseArg=" << verseArg << "\n";
-
-        runRange(bible, book, chapter, verseArg);
-    } else if (tokens.size() >= 3 && tokens[1] == "search") {
-        runSearchInBook(bible, tokens[0], tokens[2]);
-    } else {
-        cout << "Unknown command. Try again.\n";
-    }
-}
-
 
     // Save history on exit (creates file if missing)
     write_history(histFile.c_str());
@@ -405,16 +549,49 @@ int main(int argc, char* argv[]) {
     json bible;
     file >> bible;
 
-    // --- Flag-based search ---
+    // --- Flag-based search (simple, regex, or operator-based) ---
     if (args.count("--search")) {
-        runSearch(bible, args["--search"]);
-        return 0;
+        string query = args["--search"];
+
+        // Try operator-based parsing first
+        try {
+            vector<string> tokens = tokenize(query);
+            vector<string> postfix = toPostfix(tokens);
+
+            bool anyFound = false;
+            for (auto& b : bible) {
+                for (auto& ch : b["chapters"]) {
+                    for (auto& v : ch["verses"]) {
+                        string text = v["text"];
+                        if (evalPostfix(postfix, text)) {
+                            cout << b["book"] << " "
+                                 << ch["chapter"] << ":"
+                                 << v["verse"] << " → "
+                                 << text << "\n";
+                            anyFound = true;
+                        }
+                    }
+                }
+            }
+        if (!anyFound) {
+            cout << "No matches found for expression.\n";
+        }
+    } catch (...) {
+        // Fallback: use your existing simple search
+        runSearch(bible, query);
     }
+
+    return 0;
+}
+
+
+
 
     // --- Flag-based book/chapter/range ---
     if (args.count("--book") && args.count("--chapter")) {
         string book = args["--book"];
-        int chapter = stoi(args["--chapter"]);
+        int chapter = safeStoi(args["--chapter"]);
+        if (chapter == -1) return 1;   // stop if invalid
 
         if (args.count("--range")) {
             runRange(bible, book, chapter, args["--range"]);
@@ -438,7 +615,8 @@ int main(int argc, char* argv[]) {
             runSearch(bible, argv[2]);
         } else {
             string book = argv[1];
-            int chapter = stoi(argv[2]);   // safe now, because "search" case was handled above
+            int chapter = safeStoi(argv[2]);
+            if (chapter == -1) return 1;   // stop if invalid
             if (argc == 3) {
                 runChapter(bible, book, chapter);
             } else {
