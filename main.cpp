@@ -21,6 +21,8 @@ Confraternity of Christian Doctrine, Inc., Washington, DC All Rights Reserved.*/
 
 using namespace std;
 using json = nlohmann::json;
+bool evalPostfix(const vector<string>& postfix, const string& text);
+
 
 // Utility: lowercase conversion
 string toLower(const string& s) {
@@ -163,68 +165,113 @@ map<string,string> parseArgs(int argc, char* argv[]) {
     return args;
 }
 
-// --- Search helper ---
-void runSearch(json& bible, const string& keywordArg) {
+// Evaluate postfix expression on verse text
+bool evalPostfix(const vector<string>& postfix, const string& text) {
+    stack<bool> st;
+    string lowerText = toLower(text);
+
+    for (auto& token : postfix) {
+        if (token == "&&" || token == "||") {
+            if (st.size() < 2) return false;
+            bool b = st.top(); st.pop();
+            bool a = st.top(); st.pop();
+            st.push(token == "&&" ? (a && b) : (a || b));
+        } else if (token == "!") {
+            if (st.empty()) return false;
+            bool a = st.top(); st.pop();
+            st.push(!a);
+        } else {
+            // Fuzzy match for keywords
+            bool wordMatch = false;
+            regex wordPattern("\\b" + toLower(token) + "\\w*\\b", regex_constants::icase);
+            if (regex_search(lowerText, wordPattern)) {
+                wordMatch = true;
+            } else {
+                istringstream iss(lowerText);
+                string word;
+                while (iss >> word) {
+                    if (levenshtein(word, toLower(token)) <= 2) {
+                        wordMatch = true;
+                        break;
+                    }
+                }
+            }
+            st.push(wordMatch);
+        }
+    }
+    return !st.empty() && st.top();
+}
+
+// -- Unified Search Engine --
+void searchEngine(json& bible, const string& query, const string& scopeBook = "") {
+    vector<string> toks = tokenize(query);
     bool found = false;
 
-    // Split into tokens
-    istringstream iss(keywordArg);
-    vector<string> tokens;
-    for (string w; iss >> w;) tokens.push_back(w);
-
-    // Try regex
-    bool useRegex = false;
-    regex pattern;
-    try {
-        pattern = regex(keywordArg, regex_constants::icase);
-        useRegex = true;
-    } catch (...) {
-        useRegex = false;
-    }
+    // Convert to postfix for operator search
+    vector<string> postfix = toPostfix(toks);
 
     for (auto& b : bible) {
-        string book = b["book"];
+        if (!scopeBook.empty() && toLower(b["book"]) != toLower(scopeBook)) continue;
+
         for (auto& ch : b["chapters"]) {
-            int chapter = ch["chapter"];
             for (auto& v : ch["verses"]) {
                 string text = v["text"];
                 string lowerText = toLower(text);
-
                 bool match = false;
-                if (useRegex) {
-                    match = regex_search(text, pattern);
-                } else if (tokens.size() == 3 && tokens[1] == "&&") {
-                    // AND logic
-                    match = (lowerText.find(toLower(tokens[0])) != string::npos &&
-                             lowerText.find(toLower(tokens[2])) != string::npos);
-                } else if (tokens.size() == 3 && tokens[1] == "||") {
-                    // OR logic
-                    match = (lowerText.find(toLower(tokens[0])) != string::npos ||
-                             lowerText.find(toLower(tokens[2])) != string::npos);
+
+                // Evaluate postfix if operators are present
+                if (!postfix.empty()) {
+                    match = evalPostfix(postfix, text);
                 } else {
-                    // Default: all words must appear
+                    // fallback: all tokens must appear (with fuzzy matching)
                     match = true;
-                    for (auto& k : tokens) {
-                        if (lowerText.find(toLower(k)) == string::npos) {
-                            match = false;
-                            break;
+                    for (auto& k : toks) {
+                        if (k == "&&" || k == "||" || k == "!" || k == "(" || k == ")") continue;
+
+                        bool wordMatch = false;
+                        regex wordPattern("\\b" + toLower(k) + "\\w*\\b", regex_constants::icase);
+                        if (regex_search(lowerText, wordPattern)) {
+                            wordMatch = true;
+                        } else {
+                            // Fuzzy check against each word in the verse
+                            istringstream iss(lowerText);
+                            string word;
+                            while (iss >> word) {
+                                if (levenshtein(word, toLower(k)) <= 2) {
+                                    wordMatch = true;
+                                    break;
+                                }
+                            }
                         }
+
+                        if (!wordMatch) { match = false; break; }
                     }
                 }
 
                 if (match) {
                     string highlighted = text;
-                    for (auto& k : tokens) {
-                        if (k == "&&" || k == "||") continue; // skip operators
-                        size_t pos = 0;
-                        while ((pos = toLower(highlighted).find(toLower(k), pos)) != string::npos) {
-                            highlighted.replace(pos, k.length(),
-                                "\033[1;31m" + highlighted.substr(pos, k.length()) + "\033[0m");
-                            pos += k.length() + 9;
+
+                    // Only highlight if NOT operator is not used
+                    if (query.find("!") == string::npos) {
+                        for (auto& k : toks) {
+                            if (k == "&&" || k == "||" || k == "!" || k == "(" || k == ")") continue;
+                            regex wordPattern("\\b" + toLower(k) + "\\w*\\b", regex_constants::icase);
+                            sregex_iterator it(lowerText.begin(), lowerText.end(), wordPattern);
+                            sregex_iterator end;
+                            size_t offset = 0;
+                            for (; it != end; ++it) {
+                                size_t pos = it->position() + offset;
+                                string matchStr = it->str();
+                                highlighted.replace(pos, matchStr.length(),
+                                                    "\033[1;31m" + matchStr + "\033[0m");
+                                offset += 9; // account for escape codes
+                            }
                         }
                     }
-                    cout << "\033[1;34m" << book << " " << "\033[32m" << chapter << ":" << v["verse"]
-                    << "\033[0m" << " → " << highlighted << "\n";
+
+                    cout << "\033[1;34m" << b["book"] << " "
+                    << "\033[32m" << ch["chapter"] << ":" << v["verse"]
+                    << "\033[0m → " << highlighted << "\n";
                     found = true;
                 }
             }
@@ -232,7 +279,7 @@ void runSearch(json& bible, const string& keywordArg) {
     }
 
     if (!found) {
-        cout << "The word doesn't exist.\n";
+        cerr << "Error: No matches found.\n";
     }
 }
 
@@ -341,65 +388,6 @@ void runRange(json& bible, const string& book, int chapter, const string& verseA
     if (!found) cerr << "Verse(s) not found.\n";
 }
 
-// --- Book-specific search helper ---
-void runSearchInBook(json& bible, const string& book, const string& keywordArg) {
-    // Step 1: find closest book
-    string bestBook;
-    int bestDist = 999;
-    for (auto& b : bible) {
-        int dist = levenshtein(toLower(b["book"]), toLower(book));
-        if (dist < bestDist) {
-            bestDist = dist;
-            bestBook = b["book"];
-        }
-    }
-
-    // Step 2: check threshold
-    if (bestDist > 2) {
-        cout << "Book not found.\n";
-        return;
-    }
-
-    // Step 3: suggest if fuzzy
-    if (toLower(bestBook) != toLower(book)) {
-        cout << "Did you mean '" << bestBook << "'?\n";
-    }
-
-    // Step 4: search only inside bestBook
-    bool found = false;
-    istringstream iss(keywordArg);
-    vector<string> keywords;
-    for (string w; iss >> w;) keywords.push_back(w);
-
-    for (auto& b : bible) {
-        if (b["book"] == bestBook) {
-            for (auto& ch : b["chapters"]) {
-                int chapter = ch["chapter"];
-                for (auto& v : ch["verses"]) {
-                    string text = v["text"];
-                    string lowerText = toLower(text);
-
-                    bool match = true;
-                    for (auto& k : keywords) {
-                        if (lowerText.find(toLower(k)) == string::npos) {
-                            match = false; break;
-                        }
-                    }
-
-                    if (match) {
-                        cout << "\033[1;34m" << bestBook << " " << "\033[32m" << chapter << ":" << v["verse"]
-                        << "\033[0m" << " → " << text << "\n";
-                        found = true;
-                    }
-                }
-            }
-        }
-    }
-
-    if (!found) {
-        cout << "No matches found in '" << bestBook << "'.\n";
-    }
-}
 
 // --- List all books from JSON ---
 void runListBooksColumn(const string& filename) {
@@ -425,29 +413,6 @@ void runListBooksColumn(const string& filename) {
     if (count % cols != 0) cout << "\n"; // final newline
 }
 
-// Evaluate postfix expression on verse text
-bool evalPostfix(const vector<string>& postfix, const string& text) {
-    stack<bool> st;
-    string lowerText = toLower(text);
-
-    for (auto& token : postfix) {
-        if (token == "&&" || token == "||") {
-            if (st.size() < 2) return false; // malformed
-            bool b = st.top(); st.pop();
-            bool a = st.top(); st.pop();
-            st.push(token == "&&" ? (a && b) : (a || b));
-        } else if (token == "!") {
-            if (st.empty()) return false; // malformed
-            bool a = st.top(); st.pop();
-            st.push(!a);
-        } else {
-            st.push(lowerText.find(toLower(token)) != string::npos);
-        }
-    }
-    return !st.empty() && st.top();
-}
-
-
 void replLoop(json& bible) {
     string histFile = string(getenv("HOME")) + "/.nabreterm_history";
 
@@ -469,7 +434,7 @@ void replLoop(json& bible) {
             continue;
         }
 
-        // Tokenize input here
+        // Tokenize input
         istringstream iss(line);
         vector<string> tokens;
         for (string w; iss >> w;) tokens.push_back(w);
@@ -478,82 +443,72 @@ void replLoop(json& bible) {
 
         if (line == "help") {
             cout << "Commands:\n"
-            << "  Book Chapter Verse       → Show verse\n"
-            << "  Book Chapter Verse-Range → Show range\n"
-            << "  Book Chapter             → Show chapter\n"
-            << "  search <keyword>         → Search globally\n"
-            << "  <Book> search <keyword>  → Search within a book\n"
-            << "  search faith && hope     → Operator search (AND)\n"
-            << "  search faith || love     → Operator search (OR)\n"
-            << "  search !(sin)            → Operator search (NOT)\n"
-            << "  list                     → List all books\n"
-            << "  quit / exit              → Quit REPL\n";
+                 << "  Book Chapter Verse       → Show verse\n"
+                 << "  Book Chapter Verse-Range → Show range\n"
+                 << "  Book Chapter             → Show chapter\n"
+                 << "  search <keyword>         → Search globally\n"
+                 << "  <Book> search <keyword>  → Search within a book\n"
+                 << "  search faith && hope     → Operator search (AND)\n"
+                 << "  search faith || love     → Operator search (OR)\n"
+                 << "  search !(sin)            → Operator search (NOT)\n"
+                 << "  list                     → List all books\n"
+                 << "  random                   → random Bible Verse\n"
+                 << "  quit / exit              → Quit REPL\n";
             continue;
         }
 
-        // Search branch
+        // Global search
         if (tokens[0] == "search" && tokens.size() >= 2) {
             string query = line.substr(7); // everything after "search "
-            try {
-                vector<string> toks = tokenize(query);
-                vector<string> postfix = toPostfix(toks);
-                bool anyFound = false;
-                for (auto& b : bible) {
-                    for (auto& ch : b["chapters"]) {
-                        for (auto& v : ch["verses"]) {
-                            if (evalPostfix(postfix, v["text"])) {
-                            if (evalPostfix(postfix, v["text"])) {
-                                string highlighted = v["text"];
-                                for (auto& tok : toks) {
-                                    if (tok == "&&" || tok == "||" || tok == "!" || tok == "(" || tok == ")") continue;
-                                    size_t pos = 0;
-                                    while ((pos = toLower(highlighted).find(toLower(tok), pos)) != string::npos) {
-                                        highlighted.replace(pos, tok.length(),
-                                        "\033[1;31m" + highlighted.substr(pos, tok.length()) + "\033[0m");
-                                        pos += tok.length() + 9; // move past highlight
-                                    }
-                                }
-
-                                cout << "\033[1;34m" << b["book"] << " " << "\033[32m" << ch["chapter"] << ":"
-                                     << v["verse"] << "\033[0m" << " → " << highlighted << "\n";
-                                     anyFound = true;
-                                }
-                            }
-                        }
-                    }
-                }
-                if (!anyFound) cout << "No matches found.\n";
-            } catch (...) {
-                runSearch(bible, query); // fallback
-            }
+            searchEngine(bible, query);
             continue;
         }
 
-        // Book-specific search (must come before chapter/verse parsing)
+        // Book-specific search
         else if (tokens.size() >= 3 && tokens[1] == "search") {
-            // join everything after "search" into one keyword string
             string keywordArg;
             for (size_t i = 2; i < tokens.size(); i++) {
                 if (i > 2) keywordArg += " ";
                 keywordArg += tokens[i];
             }
-            runSearchInBook(bible, tokens[0], keywordArg);
+            searchEngine(bible, keywordArg, tokens[0]);
+            continue;
         }
+
+        // Random verse
+        if (tokens[0] == "random") {
+            srand(time(NULL)); // ideally call once at program startup
+            int bIndex = rand() % bible.size();
+            auto& b = bible[bIndex];
+
+            int cIndex = rand() % b["chapters"].size();
+            auto& ch = b["chapters"][cIndex];
+
+            int vIndex = rand() % ch["verses"].size();
+            auto& v = ch["verses"][vIndex];
+
+            cout << "\033[1;34m" << b["book"] << " "
+            << "\033[32m" << ch["chapter"] << ":" << v["verse"]
+            << "\033[0m → " << v["text"] << "\n";
+            continue;
+        }
+
+
 
         // Book + Chapter
         else if (tokens.size() == 2) {
             int chapter = safeStoi(tokens[1]);
             if (chapter == -1) continue;
             runChapter(bible, tokens[0], chapter);
+            continue;
         }
 
         // Book + Chapter + Verse or Range
         else if (tokens.size() == 3) {
-            string book = tokens[0];
             int chapter = safeStoi(tokens[1]);
             if (chapter == -1) continue;
-            string verseArg = tokens[2];
-            runRange(bible, book, chapter, verseArg);
+            runRange(bible, tokens[0], chapter, tokens[2]);
+            continue;
         }
 
         else {
@@ -564,7 +519,6 @@ void replLoop(json& bible) {
     // Save history on exit (creates file if missing)
     write_history(histFile.c_str());
 }
-
 
 int main(int argc, char* argv[]) {
     auto args = parseArgs(argc, argv);
@@ -581,74 +535,33 @@ int main(int argc, char* argv[]) {
     json bible;
     file >> bible;
 
-    // --- Flag-based search (simple, regex, or operator-based) ---
+    // --- Flag-based search ---
     if (args.count("--search")) {
         string query = args["--search"];
-
-        // Try operator-based parsing first
-        try {
-            vector<string> tokens = tokenize(query);
-            vector<string> postfix = toPostfix(tokens);
-
-            bool anyFound = false;
-            for (auto& b : bible) {
-                for (auto& ch : b["chapters"]) {
-                    for (auto& v : ch["verses"]) {
-                        string text = v["text"];
-                        if (evalPostfix(postfix, text)) {
-                            cout << b["book"] << " "
-                                 << ch["chapter"] << ":"
-                                 << v["verse"] << " → "
-                                 << text << "\n";
-                            anyFound = true;
-                        }
-                    }
-                }
-            }
-        if (!anyFound) {
-            cout << "No matches found for expression.\n";
-        }
-    } catch (...) {
-        // Fallback: use your existing simple search
-        runSearch(bible, query);
-    }
-
-    return 0;
-}
-
-
-
-
-    // --- Flag-based book/chapter/range ---
-    if (args.count("--book") && args.count("--chapter")) {
-        string book = args["--book"];
-        int chapter = safeStoi(args["--chapter"]);
-        if (chapter == -1) return 1;   // stop if invalid
-
-        if (args.count("--range")) {
-            runRange(bible, book, chapter, args["--range"]);
-        } else {
-            runChapter(bible, book, chapter);
-        }
+        searchEngine(bible, query);
         return 0;
     }
 
     // --- Book-specific search: nabreterm <Book> search <Keyword>
     if (argc >= 4 && string(argv[2]) == "search") {
         string book = argv[1];
-        string keywordArg = argv[3];
-        runSearchInBook(bible, book, keywordArg);
+        string keywordArg;
+        for (int i = 3; i < argc; i++) {
+            if (i > 3) keywordArg += " ";
+            keywordArg += argv[i];
+        }
+        searchEngine(bible, keywordArg, book);
         return 0;
     }
 
     // --- Positional arguments fallback ---
     if (argc >= 3) {
         if (string(argv[1]) == "search" && argc == 3) {
-            runSearch(bible, argv[2]);
+            searchEngine(bible, argv[2]);
         } else {
             string book = argv[1];
             int chapter = safeStoi(argv[2]);
-            if (chapter == -1) return 1;   // stop if invalid
+            if (chapter == -1) return 1;
             if (argc == 3) {
                 runChapter(bible, book, chapter);
             } else {
