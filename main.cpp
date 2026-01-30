@@ -23,6 +23,14 @@ using namespace std;
 using json = nlohmann::json;
 bool evalPostfix(const vector<string>& postfix, const string& text);
 
+//Clear Screen
+void clearScreen() {
+#ifdef _WIN32
+    system("cls");   // Windows
+#else
+    std::cout << "\033[2J\033[H"; // Linux/macOS
+#endif
+}
 
 // Utility: lowercase conversion
 string toLower(const string& s) {
@@ -164,6 +172,25 @@ map<string,string> parseArgs(int argc, char* argv[]) {
     }
     return args;
 }
+
+bool isNewTestament(const string& book) {
+    static vector<string> ntBooks = {
+        "Matthew","Mark","Luke","John","Acts","Romans",
+        "1Corinthians","2Corinthians","Galatians","Ephesians","Philippians",
+        "Colossians","1Thessalonians","2Thessalonians","1Timothy","2Timothy",
+        "Titus","Philemon","Hebrews","James","1Peter","2Peter",
+        "1John","2John","3John","Jude","Revelation"
+    };
+    return find(ntBooks.begin(), ntBooks.end(), book) != ntBooks.end();
+}
+
+bool isDeuterocanonical(const string& book) {
+    static vector<string> deutBooks = {
+        "Tobit","Judith","Wisdom","Sirach","Baruch","1Maccabees","2Maccabees"
+    };
+    return find(deutBooks.begin(), deutBooks.end(), book) != deutBooks.end();
+}
+
 
 // Evaluate postfix expression on verse text
 bool evalPostfix(const vector<string>& postfix, const string& text) {
@@ -453,6 +480,9 @@ void replLoop(json& bible) {
                  << "  search !(sin)            → Operator search (NOT)\n"
                  << "  list                     → List all books\n"
                  << "  random                   → random Bible Verse\n"
+                 << "  random [scope,e.g Psalms]→ random Bible Verse but its in the picked scope\n"
+                 << "  random [N] [scope]       → your custom number verses in random Bible Verse\n"
+                 << "                           → but its in the picked scope\n"
                  << "  quit / exit              → Quit REPL\n";
             continue;
         }
@@ -475,33 +505,90 @@ void replLoop(json& bible) {
             continue;
         }
 
-        // Random verse
-        if (tokens[0] == "random") {
-            srand(time(NULL)); // ideally call once at program startup
-            int bIndex = rand() % bible.size();
-            auto& b = bible[bIndex];
+        //Clear Screen
+        if (line == "clear") {
+            clearScreen();
+            continue;
+        }
 
+        // Random verse(s) with optional count and scope
+        if (tokens[0] == "random") {
+            int verseCount = 1; // default
+            string scopeArg;
+
+            // detect if second token is a number
+            if (tokens.size() >= 2) {
+                if (isdigit(tokens[1][0])) {
+                    verseCount = safeStoi(tokens[1]);
+                    if (tokens.size() >= 3) scopeArg = toLower(tokens[2]);
+                } else {
+                    scopeArg = toLower(tokens[1]);
+                }
+            }
+
+            if (verseCount <= 0) {
+                cerr << "Invalid verse count.\n";
+                continue;
+            }
+
+            vector<json> scope;
+            if (!scopeArg.empty()) {
+                if (scopeArg == "ot") {
+                    for (auto& b : bible) if (!isNewTestament(b["book"])) scope.push_back(b);
+                } else if (scopeArg == "nt") {
+                    for (auto& b : bible) if (isNewTestament(b["book"])) scope.push_back(b);
+                } else if (scopeArg == "deut") {
+                    for (auto& b : bible) if (isDeuterocanonical(b["book"])) scope.push_back(b);
+                } else {
+                    // fuzzy match for specific book
+                    string bestBook;
+                    int bestDist = 999;
+                    for (auto& b : bible) {
+                        int dist = levenshtein(toLower(b["book"]), scopeArg);
+                        if (dist < bestDist) { bestDist = dist; bestBook = b["book"]; }
+                    }
+                    if (bestDist <= 2) {
+                        for (auto& b : bible) if (b["book"] == bestBook) { scope.push_back(b); break; }
+                    }
+                }
+            } else {
+                scope = bible; // default whole Bible
+            }
+
+            if (scope.empty()) {
+                cerr << "Scope not found.\n";
+                continue;
+            }
+
+            // pick random book + chapter
+            int bIndex = rand() % scope.size();
+            auto& b = scope[bIndex];
             int cIndex = rand() % b["chapters"].size();
             auto& ch = b["chapters"][cIndex];
 
-            int vIndex = rand() % ch["verses"].size();
-            auto& v = ch["verses"][vIndex];
+            if (ch["verses"].size() < static_cast<size_t>(verseCount)) {
+                cerr << "Not enough verses in this chapter.\n";
+                continue;
+            }
 
-            cout << "\033[1;34m" << b["book"] << " "
-            << "\033[32m" << ch["chapter"] << ":" << v["verse"]
-            << "\033[0m → " << v["text"] << "\n";
+            // pick distinct verses
+            vector<int> chosen;
+            while (chosen.size() < static_cast<size_t>(verseCount)) {
+                int vIndex = rand() % ch["verses"].size();
+                if (find(chosen.begin(), chosen.end(), vIndex) == chosen.end()) {
+                    chosen.push_back(vIndex);
+                }
+            }
+
+            for (int idx : chosen) {
+                auto& v = ch["verses"][idx];
+                cout << "\033[1;34m" << b["book"] << " "
+                << "\033[32m" << ch["chapter"] << ":" << v["verse"]
+                << "\033[0m → " << v["text"] << "\n";
+            }
             continue;
         }
 
-
-
-        // Book + Chapter
-        else if (tokens.size() == 2) {
-            int chapter = safeStoi(tokens[1]);
-            if (chapter == -1) continue;
-            runChapter(bible, tokens[0], chapter);
-            continue;
-        }
 
         // Book + Chapter + Verse or Range
         else if (tokens.size() == 3) {

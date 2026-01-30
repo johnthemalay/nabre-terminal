@@ -102,6 +102,15 @@ Commands:
 - `list` → list all books  
 - `help` → show command list  
 - `quit` / `exit` → leave REPL  
+- `clear` → clear the terminal screen  
+- `random` → random verse from the whole Bible  
+- `random OT` → random verse from Old Testament  
+- `random NT` → random verse from New Testament  
+- `random Deut` → random verse from Deuterocanonical books  
+- `random <Book>` → random verse from a specific book (with fuzzy matching, e.g. `random Psalm` → `Psalms`)  
+- `random2` → two distinct verses from the same random chapter (works with scopes too, e.g. `random2 Psalms`) 
+- `random N` → N random verses from the same random chapter (e.g. `random 2`) 
+- `random N <Scope|Book>` → N random verses from the same chapter in a given scope of books
 
 ### CLI Mode
 Run directly with arguments:
@@ -119,6 +128,9 @@ Run directly with arguments:
 - **Regex search** supported in `search`.  
 - **Persistent history** stored in `~/.nabreterm_history`, recalled with ↑ / ↓ arrows.  
 - **Color highlighting** for book names and search matches.  
+- **Scoped random verse selection** (OT, NT, Deuterocanonicals, or specific book).  
+- **Random two verses from the same chapter** (`random2`).  
+- **Clear command** to reset the terminal view.  
 
 ---
 
