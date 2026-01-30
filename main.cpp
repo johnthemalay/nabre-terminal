@@ -1,6 +1,7 @@
+
 /*Scripture texts, prefaces, introductions, footnotes and cross references used in this
-work are taken from the New American Bible, revised edition © 2010, 1991, 1986, 1970
-Confraternity of Christian Doctrine, Inc., Washington, DC All Rights Reserved.*/
+ * work are taken from the New American Bible, revised edition © 2010, 1991, 1986, 1970
+ * Confraternity of Christian Doctrine, Inc., Washington, DC All Rights Reserved.*/
 
 #ifndef NABRETERM_DATADIR
 #define NABRETERM_DATADIR "."
@@ -25,11 +26,11 @@ bool evalPostfix(const vector<string>& postfix, const string& text);
 
 //Clear Screen
 void clearScreen() {
-#ifdef _WIN32
+    #ifdef _WIN32
     system("cls");   // Windows
-#else
+    #else
     std::cout << "\033[2J\033[H"; // Linux/macOS
-#endif
+    #endif
 }
 
 // Utility: lowercase conversion
@@ -61,8 +62,8 @@ int levenshtein(const string& a, const string& b) {
         for (int j = 1; j <= m; j++) {
             int cost = (tolower(a[i-1]) == tolower(b[j-1])) ? 0 : 1;
             dp[i][j] = min({ dp[i-1][j] + 1,     // deletion
-                             dp[i][j-1] + 1,     // insertion
-                             dp[i-1][j-1] + cost }); // substitution
+                dp[i][j-1] + 1,     // insertion
+                dp[i-1][j-1] + cost }); // substitution
         }
     }
     return dp[n][m];
@@ -310,6 +311,22 @@ void searchEngine(json& bible, const string& query, const string& scopeBook = ""
     }
 }
 
+// Helper: resolve book name with fuzzy matching
+string resolveBook(const json& bible, const string& input) {
+    string bestBook;
+    int bestDist = 999;
+    for (auto& b : bible) {
+        int dist = levenshtein(toLower(b["book"]), toLower(input));
+        if (dist < bestDist) {
+            bestDist = dist;
+            bestBook = b["book"];
+        }
+    }
+    if (bestDist <= 2) return bestBook; // fuzzy match threshold
+    return input; // fallback if no match
+}
+
+
 // --- Whole chapter helper ---
 void runChapter(json& bible, const string& book, int chapter) {
     // Step 1: find closest book
@@ -342,7 +359,7 @@ void runChapter(json& bible, const string& book, int chapter) {
                 if (ch["chapter"] == chapter) {
                     for (auto& v : ch["verses"]) {
                         cout << "\033[1;34m" << bestBook << "\033[0m" << "\033[32m" << chapter << ":" << v["verse"]
-                             << "\033[0m" << " → " << v["text"] << "\n";
+                        << "\033[0m" << " → " << v["text"] << "\n";
                         found = true;
                     }
                 }
@@ -384,7 +401,7 @@ void runRange(json& bible, const string& book, int chapter, const string& verseA
         getline(ss, end, '-');
         startVerse = safeStoi(start);
         endVerse   = safeStoi(end);
-    if (startVerse == -1 || endVerse == -1) return; // invalid input
+        if (startVerse == -1 || endVerse == -1) return; // invalid input
 
     } else {
         startVerse = endVerse = safeStoi(verseArg);
@@ -403,7 +420,7 @@ void runRange(json& bible, const string& book, int chapter, const string& verseA
 
                         if (verseNum >= startVerse && verseNum <= endVerse) {
                             cout << "\033[1;34m" << bestBook << " " << "\033[32m" << chapter << ":" << verseNum
-                                 << "\033[0m" << " → " << v["text"] << "\n";
+                            << "\033[0m" << " → " << v["text"] << "\n";
                             found = true;
                         }
                     }
@@ -414,6 +431,7 @@ void runRange(json& bible, const string& book, int chapter, const string& verseA
 
     if (!found) cerr << "Verse(s) not found.\n";
 }
+
 
 
 // --- List all books from JSON ---
@@ -470,20 +488,20 @@ void replLoop(json& bible) {
 
         if (line == "help") {
             cout << "Commands:\n"
-                 << "  Book Chapter Verse       → Show verse\n"
-                 << "  Book Chapter Verse-Range → Show range\n"
-                 << "  Book Chapter             → Show chapter\n"
-                 << "  search <keyword>         → Search globally\n"
-                 << "  <Book> search <keyword>  → Search within a book\n"
-                 << "  search faith && hope     → Operator search (AND)\n"
-                 << "  search faith || love     → Operator search (OR)\n"
-                 << "  search !(sin)            → Operator search (NOT)\n"
-                 << "  list                     → List all books\n"
-                 << "  random                   → random Bible Verse\n"
-                 << "  random [scope,e.g Psalms]→ random Bible Verse but its in the picked scope\n"
-                 << "  random [N] [scope]       → your custom number verses in random Bible Verse\n"
-                 << "                           → but its in the picked scope\n"
-                 << "  quit / exit              → Quit REPL\n";
+            << "  Book Chapter Verse       → Show verse\n"
+            << "  Book Chapter Verse-Range → Show range\n"
+            << "  Book Chapter             → Show chapter\n"
+            << "  search <keyword>         → Search globally\n"
+            << "  <Book> search <keyword>  → Search within a book\n"
+            << "  search faith && hope     → Operator search (AND)\n"
+            << "  search faith || love     → Operator search (OR)\n"
+            << "  search !(sin)            → Operator search (NOT)\n"
+            << "  list                     → List all books\n"
+            << "  random                   → random Bible Verse\n"
+            << "  random [scope,e.g Psalms]→ random Bible Verse but its in the picked scope\n"
+            << "  random [N] [scope]       → your custom number verses in random Bible Verse\n"
+            << "                           → but its in the picked scope\n"
+            << "  quit / exit              → Quit REPL\n";
             continue;
         }
 
@@ -589,14 +607,25 @@ void replLoop(json& bible) {
             continue;
         }
 
+        // Book + Chapter only
+else if (tokens.size() == 2) {
+    int chapter = safeStoi(tokens[1]);
+    if (chapter == -1) continue;
+    string book = resolveBook(bible, tokens[0]);
+    runChapter(bible, book, chapter);
+    continue;
+}
 
-        // Book + Chapter + Verse or Range
-        else if (tokens.size() == 3) {
-            int chapter = safeStoi(tokens[1]);
-            if (chapter == -1) continue;
-            runRange(bible, tokens[0], chapter, tokens[2]);
-            continue;
-        }
+// Book + Chapter + Verse or Range
+else if (tokens.size() == 3) {
+    int chapter = safeStoi(tokens[1]);
+    if (chapter == -1) continue;
+    string book = resolveBook(bible, tokens[0]);
+    runRange(bible, book, chapter, tokens[2]);
+    continue;
+}
+
+
 
         else {
             cout << "Unknown command. Try again.\n";
@@ -612,11 +641,11 @@ int main(int argc, char* argv[]) {
 
     ifstream file("nabre.json");
     if (!file.is_open()) {
-    file.open(std::string(NABRETERM_DATADIR) + "/nabre.json");
+        file.open(std::string(NABRETERM_DATADIR) + "/nabre.json");
     }
     if (!file.is_open()) {
-    std::cerr << "Could not open NABRE JSON file.\n";
-    return 1;
+        std::cerr << "Could not open NABRE JSON file.\n";
+        return 1;
     }
 
     json bible;
@@ -663,7 +692,7 @@ int main(int argc, char* argv[]) {
         return 0;
     }
 
-// --- Interactive REPL mode ---
+    // --- Interactive REPL mode ---
     if (argc == 1) {
         replLoop(bible);
     }
